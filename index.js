@@ -1,5 +1,6 @@
 const express = require("express");
 const app = express();
+const morgan = require("morgan");
 
 let persons = [
   {
@@ -27,6 +28,11 @@ let persons = [
 const randomId = () => {
   return Math.floor(Math.random() * 1000);
 };
+
+morgan.token("body", (req, res) => JSON.stringify(req.body));
+app.use(
+  morgan(":method :url :status :res[content-length] - :response-time ms :body")
+);
 
 app.use(express.json());
 
@@ -60,7 +66,6 @@ app.delete("/api/persons/:id", (request, response) => {
   const id = Number(request.params.id);
   console.log(id);
   persons = persons.filter((person) => person.id !== id);
-  console.log(persons);
   response.status(204).end();
 });
 
@@ -76,7 +81,6 @@ app.post("/api/persons", (request, response) => {
     (person) =>
       person.name.toLocaleLowerCase() === body.name.toLocaleLowerCase()
   );
-  console.log(findName)
 
   if (findName) {
     return response.status(409).json({
