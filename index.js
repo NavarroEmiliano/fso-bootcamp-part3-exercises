@@ -8,16 +8,13 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static("dist"));
 
-const randomId = () => {
-  return Math.floor(Math.random() * 1000);
-};
 
 morgan.token("body", (req, res) => JSON.stringify(req.body));
 app.use(
   morgan(":method :url :status :res[content-length] - :response-time ms :body")
 );
 
-app.get("/api/persons", async (request, response) => {
+app.get("/api/persons", async (request, response, next) => {
   try {
     const result = await Person.find({});
     if (result.length) {
@@ -26,32 +23,80 @@ app.get("/api/persons", async (request, response) => {
       throw new Error("Base de datos vacía.");
     }
   } catch (error) {
-    response.status(404).json({ error: error.message });
+    next(error);
   }
 });
 
-app.get("/api/persons/:id", (request, response) => {
-  const id = Number(request.params.id);
-  const data = persons.find((person) => person.id === id);
-  if (data) {
-    response.json(data);
-  } else {
-    response.status(404).end();
+const errorHandler = (error, request, response, next) => {
+  console.log(error.message);
+  if (error.name === "CastError") {
+    return response.status(400).send({ error: "malformatted id" });
+  }
+
+  next(error);
+};
+app.use(errorHandler);
+
+app.get("/api/persons/:id", async (request, response, next) => {
+  try {
+    const id = request.params.id;
+    const person = await Person.findById(id);
+    if (person) {
+      response.json(person);
+    } else {
+      response.status(404).end;
+    }
+  } catch (error) {
+    next(error);
   }
 });
 
-app.get("/info", (request, response) => {
-  const numbers = persons.length;
-  const date = new Date();
-  response.send(`<h3>Phonebook has info for ${numbers} people</h3>
-  <h3>${date}</h3>`);
+app.get("/info", async (request, response, next) => {
+  try {
+    const persons = await Person.find({});
+    const numbers = persons.length;
+    const date = new Date();
+    response.send(`<h3>Phonebook has info for ${numbers} people</h3>
+    <h3>${date}</h3>`);
+  } catch (error) {
+    next(error);
+  }
 });
 
-app.delete("/api/persons/:id", (request, response) => {
-  const id = Number(request.params.id);
-  console.log(id);
-  persons = persons.filter((person) => person.id !== id);
-  response.status(204).end();
+app.delete("/api/persons/:id", async (request, response, next) => {
+  try {
+    const id = request.params.id;
+    const deletedPerson = await Person.findByIdAndDelete(id);
+    if (deletedPerson) response.status(204).end();
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.put("/api/persons/:id", async (request, response, next) => {
+  try {
+    const body = request.body;
+    const person = {
+      name: body.name,
+      number: body.number,
+    };
+
+    const updatedPerson = await Person.findByIdAndUpdate(
+      request.params.id,
+      person,
+      {
+        new: true,
+      }
+    );
+
+    if (updatedPerson) {
+      response.json(updatedPerson);
+    } else {
+      response.status(404).json({ error: "Person not found" });
+    }
+  } catch (error) {
+    next(error);
+  }
 });
 
 app.post("/api/persons", async (request, response) => {
