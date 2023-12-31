@@ -8,7 +8,6 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static("dist"));
 
-
 morgan.token("body", (req, res) => JSON.stringify(req.body));
 app.use(
   morgan(":method :url :status :res[content-length] - :response-time ms :body")
@@ -28,14 +27,26 @@ app.get("/api/persons", async (request, response, next) => {
 });
 
 const errorHandler = (error, request, response, next) => {
-  console.log(error.message);
+  console.error(error.message);
   if (error.name === "CastError") {
     return response.status(400).send({ error: "malformatted id" });
+  } else if (error.code === 11000) {
+    return response.status(409).send({
+      error:
+        "The resource already exists in the database. Duplicates are not allowed.",
+    });
+  } else if (error.name === "ValidationError") {
+    return response
+      .status(400)
+      .json({
+        error: error.errors.number
+          ? error.errors.number.message
+          : error.errors.name.message,
+      });
   }
 
   next(error);
 };
-app.use(errorHandler);
 
 app.get("/api/persons/:id", async (request, response, next) => {
   try {
@@ -99,25 +110,21 @@ app.put("/api/persons/:id", async (request, response, next) => {
   }
 });
 
-app.post("/api/persons", async (request, response) => {
+app.post("/api/persons", (request, response, next) => {
   const body = request.body;
+  const personToSave = new Person({
+    name: body.name,
+    number: body.number,
+  });
 
-  try {
-    if (!body.name || !body.number) {
-      return response.status(400).json({
-        error: "content missing",
-      });
-    }
-    const noteToSave = new Person({
-      name: body.name,
-      number: body.number,
-    });
-    const person = await noteToSave.save();
-    return response.json(person);
-  } catch (error) {
-    return response.status(404).json({ error: error.message });
-  }
+  personToSave
+    .save()
+    .then((personSaved) => personSaved.toJSON())
+    .then((savedAndFormattedPerson) => response.json(savedAndFormattedPerson))
+    .catch((error) => next(error));
 });
+
+app.use(errorHandler);
 
 const PORT = 3001;
 app.listen(PORT, () => {
